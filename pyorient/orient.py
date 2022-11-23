@@ -49,7 +49,7 @@ type_map = {'BOOLEAN' :0,
             'ANY' : 23}
 
 class OrientSocket(object):
-    '''Class representing the binary connection to the database, it does all the low level communication
+    '''Class representing the binary connection to the database, it does all the low level comunication
     And holds information on server version and cluster map
 
     .. DANGER::
@@ -146,40 +146,40 @@ class OrientSocket(object):
     #   you have read enough.
     def read(self, _len_to_read):
 
+        pollerObject = select.poll()
+        pollerObject.register(self._socket, select.POLLIN)
+
         while True:
 
             # This is a trick to detect server disconnection
             # or broken line issues because of
             """:see: https://docs.python.org/2/howto/sockets.html#when-sockets-die """
             try:
-                ready_to_read, _, in_error = \
-                    select.select( [self._socket, ], [], [self._socket, ], 30 )
+                ready_to_read = pollerObject.poll(10000)
+
+
+                if len(ready_to_read) > 0:
+
+                    buf = bytearray(_len_to_read)
+                    view = memoryview(buf)
+                    while _len_to_read:
+                        n_bytes = self._socket.recv_into(view, _len_to_read)
+                        if not n_bytes:
+                            self._socket.close()
+                            # TODO Implement re-connection to another listener
+
+                            raise PyOrientConnectionException(
+                                "Server seems to have went down", [])
+
+                        view = view[n_bytes:]  # slicing views is cheap
+                        _len_to_read -= n_bytes
+                    return bytes(buf)
+                    
             except select.error as e:
                 self.connected = False
                 self._socket.close()
                 raise e
 
-            if len(ready_to_read) > 0:
-
-                buf = bytearray(_len_to_read)
-                view = memoryview(buf)
-                while _len_to_read:
-                    n_bytes = self._socket.recv_into(view, _len_to_read)
-                    if not n_bytes:
-                        self._socket.close()
-                        # TODO Implement re-connection to another listener
-
-                        raise PyOrientConnectionException(
-                            "Server seems to have went down", [])
-
-                    view = view[n_bytes:]  # slicing views is cheap
-                    _len_to_read -= n_bytes
-                return bytes(buf)
-
-            if len(in_error) > 0:
-                self._socket.close()
-                raise PyOrientConnectionException(
-                    "Socket error", [])
 
 
 
@@ -438,7 +438,7 @@ class OrientDB(object):
     def update_properties(self):
         '''
         This method fetches the global Properties from the server. The properties are used
-        for deserializing based on property index if using binary serialization. This method
+        for deserializing based on propery index if using binary serialization. This method
         should be called after any manual command that may result in modifications to the
         properties table, for example, "Create property ... " or "Create class .." followed
         by "Create vertex set ... "
